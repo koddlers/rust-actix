@@ -12,6 +12,6 @@ pub async fn greet(name: web::Path<String>) -> impl Responder {
 #[get("/test")]
 pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
     let _res = app_state.db
-        .query_all(Statement::from_string(Postgres, "select * from users;")).await.unwrap();
+        .query_all(Statement::from_string(Postgres, "select * from user;")).await.unwrap();
     api_response::ApiResponse::new(200, "Test".to_string())
 }
