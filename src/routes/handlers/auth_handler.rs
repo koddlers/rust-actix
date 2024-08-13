@@ -7,6 +7,7 @@ use actix_web::{post, Responder};
 use entity::user::ActiveModel;
 use sea_orm::{ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
+use sha256::digest;
 
 #[derive(Serialize, Deserialize)]
 struct RegisterModel {
@@ -26,7 +27,7 @@ pub async fn register(app_state: Data<AppState>, data: Json<RegisterModel>) -> i
     let user = ActiveModel {
         name: Set(data.name.clone()),
         email: Set(data.email.clone()),
-        password: Set(data.password.clone()),
+        password: Set(digest(&data.password)),
         ..Default::default()
     }.insert(&app_state.db).await.unwrap();
 
@@ -40,7 +41,7 @@ pub async fn login(app_state: Data<AppState>, data: Json<LoginModel>) -> impl Re
         .filter(
             Condition::all()
                 .add(entity::user::Column::Email.eq(&data.email))
-                .add(entity::user::Column::Password.eq(&data.password))
+                .add(entity::user::Column::Password.eq(digest(&data.password)))
         ).one(&app_state.db).await.unwrap();
 
     if user.is_none() {
