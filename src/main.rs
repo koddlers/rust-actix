@@ -1,6 +1,8 @@
 mod utils;
 mod routes;
 
+use std::error::{Error, Request};
+use std::fmt::{Display, Formatter};
 use actix_web::middleware::Logger;
 use actix_web::{web, App, HttpServer};
 use migration::{Migrator, MigratorTrait};
@@ -10,6 +12,26 @@ use utils::app_state::AppState;
 #[derive(Debug)]
 struct MainError {
     message: String,
+}
+
+impl Display for MainError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Error: {}", self.message)
+    }
+}
+
+impl Error for MainError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        todo!()
+    }
+
+    fn description(&self) -> &str {
+        &self.message
+    }
+
+    fn cause(&self) -> Option<&dyn Error> {
+        todo!()
+    }
 }
 
 #[actix_web::main] // or #[tokio::main]
