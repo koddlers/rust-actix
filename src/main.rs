@@ -7,8 +7,13 @@ use migration::{Migrator, MigratorTrait};
 use sea_orm::{Database, DatabaseConnection};
 use utils::app_state::AppState;
 
+#[derive(Debug)]
+struct MainError {
+    message: String,
+}
+
 #[actix_web::main] // or #[tokio::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<(), MainError> {
     set_logger();
     dotenv::dotenv().ok();
     env_logger::init();
@@ -17,8 +22,15 @@ async fn main() -> std::io::Result<()> {
     let address = (*utils::constants::ADDRESS).clone();
     let db_url = (*utils::constants::DATABASE_URL).clone();
 
-    let db: DatabaseConnection = Database::connect(&db_url).await.unwrap();
-    Migrator::up(&db, None).await.unwrap();
+    println!("Running on Port: {}", port);
+
+    let db: DatabaseConnection = Database::connect(&db_url)
+        .await.
+        map_err(|err| MainError { message: err.to_string() })?;
+
+    Migrator::up(&db, None)
+        .await
+        .map_err(|err| MainError { message: err.to_string() })?;
 
     HttpServer::new(move || {
         App::new()
@@ -28,9 +40,11 @@ async fn main() -> std::io::Result<()> {
             .configure(routes::auth_route::config)
             .configure(routes::user_routes::config)
     })
-        .bind((address, port))?
+        .bind((address, port))
+        .map_err(|err| MainError { message: err.to_string() })?
         .run()
         .await
+        .map_err(|err| MainError { message: err.to_string() })
 }
 
 fn set_logger() {
