@@ -1,12 +1,12 @@
 mod utils;
 mod routes;
 
-use std::error::{Error, Request};
-use std::fmt::{Display, Formatter};
 use actix_web::middleware::Logger;
 use actix_web::{web, App, HttpServer};
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{Database, DatabaseConnection};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use utils::app_state::AppState;
 
 #[derive(Debug)]
