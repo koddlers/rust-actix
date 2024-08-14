@@ -1,15 +1,30 @@
+use crate::utils::constants;
+use actix_web::dev::Payload;
+use actix_web::{FromRequest, HttpMessage, HttpRequest};
 use chrono::{Duration, Utc};
 use jsonwebtoken::errors::Error;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use serde::{Deserialize, Serialize};
-use crate::utils::constants;
+use std::future;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Claims {
-    pub expiry: usize,
+    pub exp: usize,
     pub iat: usize,
     pub email: String,
     pub id: i32,
+}
+
+impl FromRequest for Claims {
+    type Error = actix_web::Error;
+    type Future = future::Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> future::Ready<Result<Claims, actix_web::Error>> {
+        match req.extensions().get::<Claims>() {
+            None => future::ready(Err(actix_web::error::ErrorBadRequest("Bad Claim"))),
+            Some(claim) => future::ready(Ok(claim.clone()))
+        }
+    }
 }
 
 pub fn encode_jwt(email: String, id: i32) -> Result<String, Error> {
@@ -17,7 +32,7 @@ pub fn encode_jwt(email: String, id: i32) -> Result<String, Error> {
     let expire = Duration::hours(24);
 
     let claims = Claims {
-        expiry: (now + expire).timestamp() as usize,
+        exp: (now + expire).timestamp() as usize,
         iat: now.timestamp() as usize,
         email,
         id,
