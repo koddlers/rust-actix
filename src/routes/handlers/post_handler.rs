@@ -1,17 +1,23 @@
+use crate::utils;
 use crate::utils::{api_response, app_state, jwt::Claims};
+use actix_multipart::form::tempfile::TempFile;
+use actix_multipart::form::text::Text;
+use actix_multipart::form::MultipartForm;
 use actix_web::{get, post, web};
 use chrono::NaiveDateTime;
 use chrono::Utc;
-use sea_orm::ActiveModelTrait;
 use sea_orm::ColumnTrait;
+use sea_orm::{ActiveModelTrait, TransactionTrait};
 use sea_orm::{EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize)]
+#[derive(MultipartForm)]
 struct CreatePostModel {
-    title: String,
-    text: String,
+    title: Text<String>,
+    text: Text<String>,
+    file: TempFile,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -35,8 +41,33 @@ struct UserModel {
 async fn create_post(
     app_state: web::Data<app_state::AppState>,
     claim: Claims,
-    post_model: web::Json<CreatePostModel>,
+    post_model: MultipartForm<CreatePostModel>,
 ) -> Result<api_response::ApiResponse, api_response::ApiResponse> {
+    let check_name = post_model.file.file_name.clone().unwrap_or(String::from("null"));
+    let max_file_size = (*utils::constants::MAX_FILE_SIZE).clone();
+
+    match &check_name[check_name.len() - 4..] {
+        ".png" | ".jpg" => {}
+        _ => {
+            return Err(api_response::ApiResponse::new(400, String::from("Invalid file type")))
+        }
+    }
+
+    match post_model.file.size {
+        0 => {
+            return Err(api_response::ApiResponse::new(400, String::from("Invalid file type")))
+        }
+        length if length > max_file_size as usize => {
+            return Err(api_response::ApiResponse::new(400, String::from("File too big")))
+        }
+
+        _ => {}
+    }
+
+    let txn = app_state.db.begin().await
+        .map_err(|err| api_response::ApiResponse::new(500, err.to_string()))?;
+
+
     let post_entity = entity::post::ActiveModel
     {
         title: Set(post_model.title.clone()),
@@ -47,11 +78,43 @@ async fn create_post(
         ..Default::default()
     };
 
-    post_entity.insert(&app_state.db).await
+    let mut new_post = post_entity.save(&txn).await
         .map_err(|err| api_response::ApiResponse::new(500, err.to_string()))?;
 
+    // let temp_file_path = post_model.file.file.path();
+    let temp_file_path = Path::new("C:\\GitHub\\playground\\rust\\actix-web\\rust-actix\\temp");
+    let file_name = post_model.file.file_name.as_ref()
+        .map(|m| m.as_ref())
+        .unwrap_or("null");
 
-    Ok(api_response::ApiResponse::new(200, "Post Created".to_owned()))
+    let timestamp = Utc::now().timestamp();
+
+    let file_path = PathBuf::from("C:\\GitHub\\playground\\rust\\actix-web\\rust-actix\\public");
+    let new_file_name = format!("{}-{}", timestamp, file_name);
+
+    match std::fs::copy(temp_file_path, file_path) {
+        Ok(_) => {
+            new_post.image = Set(Some(new_file_name));
+            new_post.save(&txn)
+                .await
+                .map_err(|err| api_response::ApiResponse::new(500, String::from("couldn't save new post ") + &*err.to_string()))?;
+
+            txn.commit()
+                .await
+                .map_err(|err| api_response::ApiResponse::new(500, String::from("database transaction failed ") + &*err.to_string()))?;
+
+            std::fs::remove_file(temp_file_path).unwrap_or_default();
+
+            Ok(api_response::ApiResponse::new(200, "Post Created".to_owned()))
+        }
+        Err(err) => {
+            txn.rollback()
+                .await
+                .map_err(|err| api_response::ApiResponse::new(500, String::from("rolling back transaction ") + &*err.to_string()))?;
+
+            Err(api_response::ApiResponse::new(500, String::from("total failure ") + &*err.to_string()))
+        }
+    }
 }
 
 #[get("my-posts")]
